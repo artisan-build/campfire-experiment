@@ -17,7 +17,7 @@ class ActiveSupport::TestCase
   # Setup all fixtures in test/fixtures/*.yml for all tests in alphabetical order.
   fixtures :all
 
-  include SessionTestHelper, MentionTestHelper, TurboTestHelper, DnsTestHelper
+  include SessionTestHelper, MentionTestHelper, TurboTestHelper, DnsTestHelper, ActiveStorageServiceTestHelper
 
   setup do
     ActionCable.server.pubsub.clear

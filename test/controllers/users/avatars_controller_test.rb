@@ -18,6 +18,17 @@ class Users::AvatarsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "image/webp", @response.content_type
   end
 
+  test "show image when active storage service has no path_for" do
+    with_pathless_active_storage_service do
+      users(:kevin).update! avatar: fixture_file_upload("moon.jpg", "image/jpeg")
+
+      get user_avatar_url(users(:kevin).avatar_token)
+
+      assert_response :success
+      assert_equal "image/webp", @response.content_type
+    end
+  end
+
   test "show initials when image cannot be resized" do
     users(:kevin).update! avatar: fixture_file_upload("pixel.bmp", "image/bmp")
     get user_avatar_url(users(:kevin).avatar_token)
