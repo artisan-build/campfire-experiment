@@ -1,19 +1,22 @@
-# SQLite. Versions 3.8.0 and up are supported.
-#   gem install sqlite3
-#
-#   Ensure the SQLite 3 gem is defined in your Gemfile
-#   gem "sqlite3"
-#
 default: &default
-  adapter: sqlite3
+  adapter: postgresql
+  encoding: unicode
   pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 10 } %>
-  timeout: 5000
-  default_transaction_mode: immediate
+<% if ENV["DATABASE_URL"] %>
+  url: <%= ENV["DATABASE_URL"] %>
+<% else %>
+  host: <%= ENV.fetch("DB_HOST", "localhost") %>
+  port: <%= ENV.fetch("DB_PORT", 5432) %>
+  username: <%= ENV.fetch("DB_USERNAME", "postgres") %>
+  password: <%= ENV["DB_PASSWORD"] %>
+<% end %>
 
 development:
   primary:
     <<: *default
-    database: storage/db/development.sqlite3
+<% unless ENV["DATABASE_URL"] %>
+    database: <%= ENV.fetch("DB_DATABASE", "campfire_development") %>
+<% end %>
 
 # Warning: The database defined as "test" will be erased and
 # re-generated from your development database when you run "rake".
@@ -21,14 +24,20 @@ development:
 test:
   primary:
     <<: *default
-    database: storage/db/test.sqlite3
+<% unless ENV["DATABASE_URL"] %>
+    database: <%= ENV.fetch("DB_DATABASE", "campfire_test") %>
+<% end %>
 
 performance:
   primary:
     <<: *default
-    database: storage/db/performance.sqlite3
+<% unless ENV["DATABASE_URL"] %>
+    database: <%= ENV.fetch("DB_DATABASE", "campfire_performance") %>
+<% end %>
 
 production:
   primary:
     <<: *default
-    database: storage/db/production.sqlite3
+<% unless ENV["DATABASE_URL"] %>
+    database: <%= ENV.fetch("DB_DATABASE", "campfire_production") %>
+<% end %>

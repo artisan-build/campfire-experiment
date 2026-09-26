@@ -22,7 +22,7 @@ class User < ApplicationRecord
   after_create_commit :grant_membership_to_open_rooms
 
   scope :ordered, -> { order("LOWER(name)") }
-  scope :filtered_by, ->(query) { where("name like ?", "%#{query}%") }
+  scope :filtered_by, ->(query) { where("lower(name) like lower(?)", "%#{query}%") }
 
   def initials
     name.scan(/\b\w/).join

@@ -127,8 +127,15 @@ class CreateInitialSchema < ActiveRecord::Migration[7.2]
     add_foreign_key "push_subscriptions", "users"
     add_foreign_key "searches", "users"
 
-    execute <<-SQL
-      create virtual table message_search_index using fts5(body, tokenize=porter);
+    create_table "message_search_index", id: false do |t|
+      t.bigint "message_id", null: false, primary_key: true
+      t.text "body", null: false
+    end
+    add_foreign_key "message_search_index", "messages", column: "message_id", on_delete: :cascade
+    execute <<~SQL
+      CREATE INDEX index_message_search_on_body
+      ON message_search_index
+      USING gin (to_tsvector('english', body));
     SQL
   end
 end

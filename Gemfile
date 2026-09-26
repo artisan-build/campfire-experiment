@@ -8,8 +8,9 @@ gem "ostruct"
 gem "benchmark"
 
 # Drivers
-gem "sqlite3"
+gem "pg"
 gem "redis", "~> 5.4"
+gem "aws-sdk-s3", require: false
 
 # Deployment
 gem "puma", "~> 7.2", ">= 7.2.1"

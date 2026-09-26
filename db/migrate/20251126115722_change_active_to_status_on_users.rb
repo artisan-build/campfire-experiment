@@ -4,7 +4,7 @@ class ChangeActiveToStatusOnUsers < ActiveRecord::Migration[8.1]
 
     reversible do |dir|
       dir.up do
-        execute "UPDATE users SET status = 1 WHERE active = 0"
+        execute "UPDATE users SET status = 1 WHERE active = false"
       end
     end
 

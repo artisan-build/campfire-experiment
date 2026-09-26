@@ -11,6 +11,9 @@
 # It's strongly recommended that you check this file into your version control system.
 
 ActiveRecord::Schema[8.2].define(version: 2025_12_12_154340) do
+  # These are extensions that must be enabled in order to support this database
+  enable_extension "pg_catalog.plpgsql"
+
   create_table "accounts", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.text "custom_styles"
@@ -64,7 +67,7 @@ ActiveRecord::Schema[8.2].define(version: 2025_12_12_154340) do
     t.datetime "created_at", null: false
     t.string "ip_address", null: false
     t.datetime "updated_at", null: false
-    t.integer "user_id", null: false
+    t.bigint "user_id", null: false
     t.index ["ip_address"], name: "index_bans_on_ip_address"
     t.index ["user_id"], name: "index_bans_on_user_id"
   end
@@ -92,6 +95,11 @@ ActiveRecord::Schema[8.2].define(version: 2025_12_12_154340) do
     t.index ["room_id", "user_id"], name: "index_memberships_on_room_id_and_user_id", unique: true
     t.index ["room_id"], name: "index_memberships_on_room_id"
     t.index ["user_id"], name: "index_memberships_on_user_id"
+  end
+
+  create_table "message_search_index", primary_key: "message_id", force: :cascade do |t|
+    t.text "body", null: false
+    t.index "to_tsvector('english'::regconfig, body)", name: "index_message_search_on_body", using: :gin
   end
 
   create_table "messages", force: :cascade do |t|
@@ -139,7 +147,7 @@ ActiveRecord::Schema[8.2].define(version: 2025_12_12_154340) do
     t.string "token", null: false
     t.datetime "updated_at", null: false
     t.string "user_agent"
-    t.integer "user_id", null: false
+    t.bigint "user_id", null: false
     t.index ["token"], name: "index_sessions_on_token", unique: true
     t.index ["user_id"], name: "index_sessions_on_user_id"
   end
@@ -162,7 +170,7 @@ ActiveRecord::Schema[8.2].define(version: 2025_12_12_154340) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.string "url"
-    t.integer "user_id", null: false
+    t.bigint "user_id", null: false
     t.index ["user_id"], name: "index_webhooks_on_user_id"
   end
 
@@ -170,14 +178,11 @@ ActiveRecord::Schema[8.2].define(version: 2025_12_12_154340) do
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "bans", "users"
   add_foreign_key "boosts", "messages"
+  add_foreign_key "message_search_index", "messages", on_delete: :cascade
   add_foreign_key "messages", "rooms"
   add_foreign_key "messages", "users", column: "creator_id"
   add_foreign_key "push_subscriptions", "users"
   add_foreign_key "searches", "users"
   add_foreign_key "sessions", "users"
   add_foreign_key "webhooks", "users"
-
-  # Virtual tables defined in this database.
-  # Note that virtual tables may not work with other database engines. Be careful if changing database.
-  create_virtual_table "message_search_index", "fts5", ["body", "tokenize=porter"]
 end
