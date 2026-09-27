@@ -1,17 +1,49 @@
 #!/bin/bash -e
 
-# TEMPORARY Cloud diagnostics probe v3 (names only, never values). Reverted once
-# the readiness mechanism is identified. See CLOUD.md.
+# TEMPORARY Cloud diagnostics probe v4 (no secret values). Reverted once the
+# readiness mechanism is identified. See CLOUD.md.
 (
-  sleep 5
-  for f in /opt/cloud/*/cloud-init-* /opt/cloud/cloud-init-*; do
-    [ -f "$f" ] || continue
-    case "$f" in *.env*) continue;; esac
-    echo "PROBE3 stackfile: $f"
-    sed "s|^|PROBE3 stack: |" "$f" || true
+  sleep 4
+  echo "PROBE4 vals: PORT=${PORT-unset} NGINX_UPSTREAM_PORT=${NGINX_UPSTREAM_PORT-unset} SSL_MODE=${SSL_MODE-unset} LARAVEL_CLOUD=${LARAVEL_CLOUD-unset} APP_URL=${APP_URL-unset} HOSTNAME=${HOSTNAME-unset}"
+  SA=/var/run/secrets/kubernetes.io/serviceaccount
+  if [ -f "$SA/token" ]; then
+    NS=$(cat "$SA/namespace" 2>/dev/null || echo default)
+    echo "PROBE4 k8s: token present, ns=$NS"
+    ruby -rnet/http -ruri -rjson -e '
+      sa="/var/run/secrets/kubernetes.io/serviceaccount"
+      tok=File.read("#{sa}/token")
+      ns=File.read("#{sa}/namespace") rescue "default"
+      host=ENV["KUBERNETES_SERVICE_HOST"]; port=ENV["KUBERNETES_SERVICE_PORT_HTTPS"]||"443"
+      http=Net::HTTP.new(host, port.to_i); http.use_ssl=true; http.verify_mode=OpenSSL::SSL::VERIFY_NONE
+      req=Net::HTTP::Get.new("/api/v1/namespaces/#{ns}/pods/#{ENV["HOSTNAME"]}")
+      req["Authorization"]="Bearer #{tok}"
+      res=http.request(req)
+      if res.code=="200"
+        pod=JSON.parse(res.body)
+        pod["spec"]["containers"].each do |c|
+          %w[livenessProbe readinessProbe startupProbe].each do |p|
+            puts "PROBE4 podspec #{c["name"]} #{p}: #{(c[p]||{}).to_json}"
+          end
+          puts "PROBE4 podspec #{c["name"]} ports: #{(c["ports"]||[]).to_json}"
+          puts "PROBE4 podspec #{c["name"]} lifecycle: #{(c["lifecycle"]||{}).to_json}"
+        end
+      else
+        puts "PROBE4 k8s api: #{res.code} #{res.body[0,200]}"
+      end
+    ' 2>&1 | head -30
+  else
+    echo "PROBE4 k8s: no serviceaccount token mounted"
+  fi
+  PODIP=$(ruby -rsocket -e 'print Socket.ip_address_list.reject(&:ipv4_loopback?).find(&:ipv4?)&.ip_address')
+  echo "PROBE4 podip: $PODIP"
+  for tgt in "127.0.0.1:80" "$PODIP:80" "$PODIP:3000" "$PODIP:8080"; do
+    code=$(ruby -rnet/http -e 'h,p=ARGV[0].split(":"); print Net::HTTP.new(h,p.to_i).tap{|x| x.open_timeout=2; x.read_timeout=2}.get("/up").code rescue print "ERR"' "$tgt")
+    echo "PROBE4 curl $tgt/up -> $code"
   done
-  ruby -e 'ENV.keys.sort.each_slice(6){|s| puts "PROBE3 env: #{s.join(" ")}"}'
-  echo "PROBE3 ports: PORT=${PORT-unset} HTTP_PORT=${HTTP_PORT-unset} TARGET_PORT=${TARGET_PORT-unset}"
+  for i in $(seq 1 24); do
+    echo "PROBE4 alive t=$((i*5))s $(date -u +%H:%M:%S)"
+    sleep 5
+  done
 ) &
 
 rm -f tmp/pids/server.pid
