@@ -1,5 +1,26 @@
 #!/bin/bash -e
 
+# TEMPORARY Cloud diagnostics probe (names only, never values). Reverted once
+# the web proxy port/health mismatch is identified. See CLOUD.md.
+echo "PROBE env names: $(ruby -e 'print ENV.keys.sort.join(" ")')"
+echo "PROBE port vars: PORT=${PORT-unset} HTTP_PORT=${HTTP_PORT-unset} TARGET_PORT=${TARGET_PORT-unset}"
+for f in $(find /etc/nginx /etc/cloud /opt -maxdepth 4 -name '*.conf' 2>/dev/null | head -20); do
+  echo "PROBE nginx file: $f"
+  sed 's/^/PROBE conf: /' "$f" || true
+done
+
+(
+  sleep 10
+  ports=$(cat /proc/net/tcp /proc/net/tcp6 2>/dev/null | awk '$4=="0A"{print $2}' | cut -d: -f2 | sort -u | while read -r h; do printf '%d ' "0x$h"; done)
+  echo "PROBE listening ports: ${ports:-none}"
+  procs=$(for d in /proc/[0-9]*; do tr '\0' ' ' < "$d/cmdline" 2>/dev/null; echo; done | sort -u | tr '\n' ';')
+  echo "PROBE processes: ${procs:0:1500}"
+  for p in 80 3000 8000 8080 8888 9000; do
+    code=$(ruby -rnet/http -e 'print Net::HTTP.new("127.0.0.1", ARGV[0].to_i).tap{|h| h.open_timeout=2; h.read_timeout=2}.get("/up").code rescue print "ERR"' "$p")
+    echo "PROBE curl 127.0.0.1:$p/up -> $code"
+  done
+) &
+
 rm -f tmp/pids/server.pid
 ./bin/rails db:prepare
 ./bin/rails server
