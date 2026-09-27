@@ -6,6 +6,9 @@ class Reverb::ChannelsControllerTest < ActionDispatch::IntegrationTest
 
   setup do
     @room = rooms(:designers)
+    # Every human fixture belongs to :designers, so :pets is the room the
+    # signed-in user is a stranger to.
+    @other_room = rooms(:pets)
     ReverbClient.stubs(:instance).returns(
       ReverbClient.new(app_id: "1", key: KEY, secret: SECRET, host: "reverb.test", port: "443", scheme: "https")
     )
@@ -49,7 +52,7 @@ class Reverb::ChannelsControllerTest < ActionDispatch::IntegrationTest
     post reverb_subscription_url, params: { channel: "PresenceChannel", room_id: rooms(:bender_and_kevin).id }, as: :json
     assert_response :success # kevin is a member of this one
 
-    post reverb_subscription_url, params: { channel: "PresenceChannel", room_id: rooms(:david_and_jason).id }, as: :json
+    post reverb_subscription_url, params: { channel: "PresenceChannel", room_id: @other_room.id }, as: :json
     assert_response :forbidden
   end
 
@@ -89,8 +92,7 @@ class Reverb::ChannelsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "a non-member is refused a signature for a room's message stream" do
-    sign_in :bender
-    channel = ReverbStream.channel_for("#{@room.to_gid_param}:messages")
+    channel = ReverbStream.channel_for("#{@other_room.to_gid_param}:messages")
 
     post reverb_auth_url, params: { socket_id: "123.456", channel_name: channel }, as: :json
 
@@ -151,10 +153,8 @@ class Reverb::ChannelsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "a non-member cannot make the room think they are typing" do
-    sign_in :bender
-
-    assert_no_broadcasts TypingNotificationsChannel.broadcasting_for(@room) do
-      post reverb_perform_url, params: { channel: "TypingNotificationsChannel", room_id: @room.id, channel_action: "start" }, as: :json
+    assert_no_broadcasts TypingNotificationsChannel.broadcasting_for(@other_room) do
+      post reverb_perform_url, params: { channel: "TypingNotificationsChannel", room_id: @other_room.id, channel_action: "start" }, as: :json
     end
 
     assert_response :forbidden

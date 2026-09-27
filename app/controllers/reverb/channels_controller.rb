@@ -75,7 +75,7 @@ class Reverb::ChannelsController < ApplicationController
     # Turbo signs its stream names; verifying the signature is what turns the
     # client's claim back into a stream name we will look at.
     def signed_stream
-      verified_stream_name_from_params.presence
+      Turbo.signed_stream_verifier.verified(params[:signed_stream_name]).presence
     end
 
     def reads_stream
