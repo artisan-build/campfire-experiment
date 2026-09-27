@@ -15,9 +15,10 @@ threads min_threads_count, max_threads_count
 #
 worker_timeout 3600 if ENV.fetch("RAILS_ENV", "development") == "development"
 
-# Bind http listener.
+# Bind http listener. Laravel Cloud's network is IPv6-only, so production sets
+# PUMA_BIND_HOST=[::]; the default stays IPv4 to match upstream.
 PORT=ENV.fetch("PORT", 3000)
-bind "tcp://0.0.0.0:#{PORT}"
+bind "tcp://#{ENV.fetch("PUMA_BIND_HOST", "0.0.0.0")}:#{PORT}"
 
 # Specifies the `environment` that Puma will run in.
 #
