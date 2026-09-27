@@ -47,12 +47,10 @@ class ReverbClient
 
   def initialize(app_id: ENV["REVERB_APP_ID"], key: ENV["REVERB_APP_KEY"], secret: ENV["REVERB_APP_SECRET"],
                  host: ENV["REVERB_HOST"], port: ENV["REVERB_PORT"], scheme: ENV["REVERB_SCHEME"],
-                 verify_ssl: ENV["REVERB_VERIFY_SSL"], timeout: DEFAULT_TIMEOUT,
-                 max_message_size: ENV["REVERB_MAX_MESSAGE_SIZE"])
+                 timeout: DEFAULT_TIMEOUT, max_message_size: ENV["REVERB_MAX_MESSAGE_SIZE"])
     @app_id, @key, @secret, @host = app_id, key, secret, host
     @scheme = scheme.presence || "https"
     @port = (port.presence || (@scheme == "https" ? 443 : 80)).to_i
-    @verify_ssl = verify_ssl.nil? || ActiveModel::Type::Boolean.new.cast(verify_ssl) != false
     @timeout = timeout
     @max_message_size = (max_message_size.presence || DEFAULT_MAX_MESSAGE_SIZE).to_i
   end
@@ -79,10 +77,6 @@ class ReverbClient
   private
     attr_reader :secret, :timeout
 
-    def verify_ssl?
-      @verify_ssl
-    end
-
     def post(path, body)
       uri = URI("#{scheme}://#{host}:#{port}#{path}?#{signed_query("POST", path, body)}")
 
@@ -99,8 +93,10 @@ class ReverbClient
 
     def http(uri)
       Net::HTTP.new(uri.host, uri.port).tap do |http|
+        # Certificates are always verified: Cloud's Reverb host has a real one,
+        # and a local Reverb without one should be reached over REVERB_SCHEME=http
+        # rather than by turning verification off.
         http.use_ssl = uri.scheme == "https"
-        http.verify_mode = OpenSSL::SSL::VERIFY_NONE unless verify_ssl?
         http.open_timeout = http.read_timeout = http.write_timeout = timeout
       end
     end

@@ -20,9 +20,10 @@ class Reverb::ChannelsController < ApplicationController
     "RoomMessagesChannel"        => { stream: :signed_stream },
     "ReadRoomsChannel"           => { stream: :reads_stream },
     "UnreadRoomsChannel"         => { stream: :unreads_stream },
-    "RoomChannel"                => { stream: :room_stream },
-    "TypingNotificationsChannel" => { stream: :room_stream },
-    "PresenceChannel"            => { stream: :room_stream, on_subscribe: "present", on_unsubscribe: "absent" },
+    "RoomChannel"                => { stream: :room_stream, broadcaster: RoomChannel },
+    "TypingNotificationsChannel" => { stream: :room_stream, broadcaster: TypingNotificationsChannel },
+    "PresenceChannel"            => { stream: :room_stream, broadcaster: PresenceChannel,
+                                      on_subscribe: "present", on_unsubscribe: "absent" },
     # No stream of its own: the socket being up IS the heartbeat.
     "HeartbeatChannel"           => { stream: :no_stream }
   }.freeze
@@ -87,10 +88,12 @@ class Reverb::ChannelsController < ApplicationController
     end
 
     # Asks the channel class itself for the name, so the mapping cannot drift
-    # from what ActionCable::Channel#stream_for would have produced.
+    # from what ActionCable::Channel#stream_for would have produced. The class
+    # comes out of CHANNELS rather than off the request, so nothing here turns a
+    # parameter into a constant.
     def room_stream
       room = Current.user.rooms.find_by(id: params[:room_id])
-      params[:channel].constantize.broadcasting_for(room) if room
+      CHANNELS.dig(params[:channel], :broadcaster).broadcasting_for(room) if room
     end
 
     def typing_notification(room)

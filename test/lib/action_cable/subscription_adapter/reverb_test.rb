@@ -92,8 +92,8 @@ class ActionCable::SubscriptionAdapter::ReverbTest < ActiveSupport::TestCase
     confirmed = false
 
     assert_nothing_raised do
-      @adapter.subscribe "user_1_reads", ->(_message) {}, -> { confirmed = true }
-      @adapter.unsubscribe "user_1_reads", ->(_message) {}
+      @adapter.subscribe "user_1_reads", ->(_message) { }, -> { confirmed = true }
+      @adapter.unsubscribe "user_1_reads", ->(_message) { }
       @adapter.shutdown
     end
 
