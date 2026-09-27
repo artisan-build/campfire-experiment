@@ -6,7 +6,7 @@ This throwaway fork tests the minimum changes required to run Campfire on Larave
 
 - Build: `SECRET_KEY_BASE_DUMMY=1 bundle exec rails assets:precompile`
 - Deploy: `bin/rails db:prepare`
-- Web: `bin/rails server`
+- Web: `bin/start-app` (Cloud already provides the public web proxy, so the Procfile does not wrap Puma in Thruster)
 - Background process: `FORK_PER_JOB=false INTERVAL=0.1 bundle exec resque-pool`
 - App variables: `DISABLE_SSL=true`, `SKIP_TELEMETRY=true`, `VAPID_PUBLIC_KEY`, and `VAPID_PRIVATE_KEY`
 
@@ -28,5 +28,6 @@ The exact injected variable names and CLI-versus-dashboard setup steps will be r
 - `app/models/message/searchable.rb`: query and maintain the PostgreSQL search index.
 - `app/models/user.rb`: keep autocomplete matching case-insensitive on PostgreSQL.
 - `Gemfile.lock`: lock the PostgreSQL and S3 driver dependencies.
+- `Procfile`: avoid nesting Thruster behind Cloud's own web proxy.
 
 `.cloud/config.json` is experiment-specific and has no upstream counterpart.
