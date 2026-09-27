@@ -53,7 +53,8 @@ class ReverbClient
 
   # What the browser needs to open its own socket. Never the secret.
   def client_config
-    { key: key, host: host, port: port, scheme: scheme, forceTLS: scheme == "https" }
+    # cluster is inert once host is set, but pusher-js refuses to start without it.
+    { key: key, host: host, port: port, scheme: scheme, forceTLS: scheme == "https", cluster: "reverb" }
   end
 
   # `data` is passed through verbatim when it is already a string, so an

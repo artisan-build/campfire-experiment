@@ -43,7 +43,10 @@ export default class ReverbConsumer {
       wssPort: this.config.port,
       forceTLS: this.config.forceTLS,
       enabledTransports: [ "ws", "wss" ],
-      disableStats: true,
+      // pusher-js throws without a cluster even when wsHost is given; wsHost
+      // wins, so this only has to be present.
+      cluster: this.config.cluster,
+      enableStats: false,
       channelAuthorization: { customHandler: authorizeChannel }
     })
 

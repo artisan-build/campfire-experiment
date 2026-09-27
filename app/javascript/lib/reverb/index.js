@@ -1,13 +1,9 @@
 import { cable } from "@hotwired/turbo-rails"
-import ReverbConsumer from "lib/reverb/consumer"
+import { reverbConsumer } from "lib/reverb/config"
 
-// Swap Turbo's Action Cable consumer for a Pusher one when a Reverb server is
-// attached (see ReverbHelper#reverb_meta_tag). This runs while modules are still
-// being evaluated, before customElements.define's upgrade reactions are
-// processed off the microtask queue, so the first <turbo-cable-stream-source> on
-// the page already sees the replacement.
-const meta = document.querySelector("meta[name=reverb-config]")
+// Hand the Stimulus channels (presence, typing, read/unread rooms, heartbeat)
+// the same Reverb-backed consumer the stream sources use. Import this AFTER
+// @hotwired/turbo-rails; lib/reverb/stream_source goes before it.
+const consumer = reverbConsumer()
 
-if (meta?.content) {
-  cable.setConsumer(new ReverbConsumer(JSON.parse(meta.content)))
-}
+if (consumer) cable.setConsumer(consumer)

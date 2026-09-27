@@ -27,15 +27,16 @@ class ReverbClientTest < ActiveSupport::TestCase
     assert_equal HOST, config[:host]
     assert_equal 443, config[:port]
     assert config[:forceTLS]
+    assert config[:cluster].present?, "pusher-js refuses to start without a cluster"
     assert_not_includes config.to_json, SECRET
   end
 
   test "an event is posted to the Pusher events endpoint, signed" do
-    request = stub_request(:post, %r{\Ahttps://#{HOST}/apps/#{APP_ID}/events}).to_return(status: 200, body: "{}")
+    stub_request(:post, %r{\Ahttps://#{HOST}/apps/#{APP_ID}/events}).to_return(status: 200, body: "{}")
 
     @client.trigger channel: "private-ac-abc", event: "action_cable", data: %({"a":1})
 
-    assert_requested request do |sent|
+    assert_requested :post, %r{\Ahttps://#{HOST}/apps/#{APP_ID}/events} do |sent|
       body = JSON.parse(sent.body)
       query = Rack::Utils.parse_query(sent.uri.query)
 
@@ -47,6 +48,8 @@ class ReverbClientTest < ActiveSupport::TestCase
       assert_equal "1.0", query["auth_version"]
       assert_equal Digest::MD5.hexdigest(sent.body), query["body_md5"]
       assert_equal expected_signature(query, sent.body), query["auth_signature"]
+      assert_match(/Mozilla/, sent.headers["User-Agent"], "Cloudflare's integrity check rejects a bare Ruby agent")
+      true
     end
   end
 
@@ -57,6 +60,7 @@ class ReverbClientTest < ActiveSupport::TestCase
 
     assert_requested :post, %r{/apps/#{APP_ID}/events} do |sent|
       assert_equal %({"room_id":3}), JSON.parse(sent.body)["data"]
+      true
     end
   end
 
@@ -85,7 +89,7 @@ class ReverbClientTest < ActiveSupport::TestCase
   end
 
   private
-    def expected_signature(query, body)
+    def expected_signature(query, _body)
       signed = query.slice("auth_key", "auth_timestamp", "auth_version", "body_md5")
         .sort.map { |key, value| "#{key}=#{value}" }.join("&")
 
