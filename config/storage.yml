@@ -12,6 +12,12 @@ cloud:
   secret_access_key: <%= ENV["AWS_SECRET_ACCESS_KEY"] %>
   region: <%= ENV.fetch("AWS_DEFAULT_REGION", ENV["AWS_REGION"]) %>
   bucket: <%= ENV["AWS_BUCKET"] %>
+  # Cloud's S3-compatible object storage rejects requests that carry more than
+  # one checksum. aws-sdk-s3 >= 1.178 adds a default CRC32 to every upload on
+  # top of Active Storage's MD5 ("You can only specify one non-default checksum
+  # at a time"), so only checksum when the operation requires it.
+  request_checksum_calculation: when_required
+  response_checksum_validation: when_required
 <% if ENV["AWS_ENDPOINT"] %>
   endpoint: <%= ENV["AWS_ENDPOINT"] %>
   force_path_style: <%= ENV.fetch("AWS_USE_PATH_STYLE_ENDPOINT", "false") == "true" %>
