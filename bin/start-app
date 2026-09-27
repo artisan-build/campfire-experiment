@@ -1,26 +1,17 @@
 #!/bin/bash -e
 
-# TEMPORARY Cloud diagnostics probe v2 (names only, never values). Reverted once
-# the web proxy port/health mismatch is identified. See CLOUD.md.
-ruby -e 'ENV.keys.sort.each_slice(8){|s| puts "PROBE2 env: #{s.join(" ")}"}'
-echo "PROBE2 ports: PORT=${PORT-unset} HTTP_PORT=${HTTP_PORT-unset} TARGET_PORT=${TARGET_PORT-unset}"
-for f in /etc/nginx/nginx.conf /etc/nginx/conf.d/* /etc/nginx/sites-enabled/* /etc/nginx/sites-available/*; do
-  [ -f "$f" ] || continue
-  echo "PROBE2 file: $f"
-  grep -vE '^\s*(#|$)' "$f" | head -120 | sed "s|^|PROBE2 $f: |" || true
-done
-find /opt/cloud -maxdepth 3 -type f 2>/dev/null | head -30 | while read -r f; do
-  echo "PROBE2 cloudfile: $f ($(wc -c < "$f") bytes)"
-  case "$f" in
-    *.json|*.yaml|*.yml|*.toml|*.conf|*.service|*.sh|*Procfile*) head -c 4000 "$f" | sed "s|^|PROBE2 $f: |" || true;;
-  esac
-done
-
+# TEMPORARY Cloud diagnostics probe v3 (names only, never values). Reverted once
+# the readiness mechanism is identified. See CLOUD.md.
 (
-  sleep 12
-  for lg in /var/log/nginx/error.log /var/log/nginx/access.log; do
-    [ -f "$lg" ] && echo "PROBE2 log: $lg" && tail -n 30 "$lg" | sed "s|^|PROBE2 $lg: |"
+  sleep 5
+  for f in /opt/cloud/*/cloud-init-* /opt/cloud/cloud-init-*; do
+    [ -f "$f" ] || continue
+    case "$f" in *.env*) continue;; esac
+    echo "PROBE3 stackfile: $f"
+    sed "s|^|PROBE3 stack: |" "$f" || true
   done
+  ruby -e 'ENV.keys.sort.each_slice(6){|s| puts "PROBE3 env: #{s.join(" ")}"}'
+  echo "PROBE3 ports: PORT=${PORT-unset} HTTP_PORT=${HTTP_PORT-unset} TARGET_PORT=${TARGET_PORT-unset}"
 ) &
 
 rm -f tmp/pids/server.pid
