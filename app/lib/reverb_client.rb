@@ -1,0 +1,114 @@
+require "net/http"
+require "openssl"
+require "digest"
+
+# Publishes events to a Pusher-protocol server — here Laravel Cloud's managed
+# Reverb — and signs private-channel subscriptions for it.
+#
+# The Pusher HTTP API is four lines of HMAC over a sorted query string, so this
+# does it by hand rather than adding the `pusher` gem. A fork whose whole point
+# is measuring drift from upstream should not pay a Gemfile + Gemfile.lock
+# conflict for forty lines of Net::HTTP.
+class ReverbClient
+  class Error < StandardError; end
+
+  AUTH_VERSION = "1.0"
+  DEFAULT_TIMEOUT = 5
+
+  class << self
+    # True when a WebSocket application is attached: Cloud injects all five
+    # names below. Nothing in this file is reachable otherwise, which is what
+    # keeps development, test and CI on Action Cable's own WebSocket.
+    def configured?
+      %w[ REVERB_APP_ID REVERB_APP_KEY REVERB_APP_SECRET REVERB_HOST ].all? { |name| ENV[name].present? }
+    end
+
+    def instance
+      @instance ||= new
+    end
+
+    # Test seam: the memoized client caches the environment it was built from.
+    def reset!
+      @instance = nil
+    end
+  end
+
+  attr_reader :app_id, :key, :host, :port, :scheme
+
+  def initialize(app_id: ENV["REVERB_APP_ID"], key: ENV["REVERB_APP_KEY"], secret: ENV["REVERB_APP_SECRET"],
+                 host: ENV["REVERB_HOST"], port: ENV["REVERB_PORT"], scheme: ENV["REVERB_SCHEME"],
+                 verify_ssl: ENV["REVERB_VERIFY_SSL"], timeout: DEFAULT_TIMEOUT)
+    @app_id, @key, @secret, @host = app_id, key, secret, host
+    @scheme = scheme.presence || "https"
+    @port = (port.presence || (@scheme == "https" ? 443 : 80)).to_i
+    @verify_ssl = verify_ssl.nil? || ActiveModel::Type::Boolean.new.cast(verify_ssl) != false
+    @timeout = timeout
+  end
+
+  # What the browser needs to open its own socket. Never the secret.
+  def client_config
+    { key: key, host: host, port: port, scheme: scheme, forceTLS: scheme == "https" }
+  end
+
+  # `data` is passed through verbatim when it is already a string, so an
+  # Action Cable payload (which arrives JSON-encoded) is not re-encoded: the
+  # browser then parses exactly the value Action Cable's own client would have.
+  def trigger(channel:, event:, data:)
+    body = JSON.generate(name: event, channel: channel, data: data.is_a?(String) ? data : JSON.generate(data))
+    post "/apps/#{app_id}/events", body
+  end
+
+  # Pusher's private/presence channel signature.
+  def subscription_auth(socket_id:, channel:)
+    "#{key}:#{signature("#{socket_id}:#{channel}")}"
+  end
+
+  private
+    attr_reader :secret, :timeout
+
+    def verify_ssl?
+      @verify_ssl
+    end
+
+    def post(path, body)
+      uri = URI("#{scheme}://#{host}:#{port}#{path}?#{signed_query("POST", path, body)}")
+
+      response = http(uri).post("#{uri.path}?#{uri.query}", body, "Content-Type" => "application/json")
+      raise Error, "#{response.code} #{response.body.to_s.truncate(200)}" unless response.is_a?(Net::HTTPSuccess)
+
+      response
+    rescue Error
+      raise
+    rescue StandardError => e
+      raise Error, "#{e.class}: #{e.message}"
+    end
+
+    def http(uri)
+      Net::HTTP.new(uri.host, uri.port).tap do |http|
+        http.use_ssl = uri.scheme == "https"
+        http.verify_mode = OpenSSL::SSL::VERIFY_NONE unless verify_ssl?
+        http.open_timeout = http.read_timeout = http.write_timeout = timeout
+      end
+    end
+
+    # Pusher signs "METHOD\npath\nalphabetically-sorted-query".
+    def signed_query(method, path, body)
+      params = {
+        "auth_key" => key,
+        "auth_timestamp" => Time.now.to_i.to_s,
+        "auth_version" => AUTH_VERSION,
+        "body_md5" => Digest::MD5.hexdigest(body)
+      }
+
+      params["auth_signature"] = signature [ method, path, query_string(params.sort) ].join("\n")
+      query_string(params)
+    end
+
+    def query_string(pairs)
+      pairs.map { |key, value| "#{key}=#{value}" }.join("&")
+    end
+
+    def signature(payload)
+      OpenSSL::HMAC.hexdigest "sha256", secret, payload
+    end
+end

@@ -4,6 +4,7 @@ pin "@hotwired/stimulus", to: "stimulus.min.js"
 pin "@hotwired/stimulus-loading", to: "stimulus-loading.js"
 pin "@hotwired/turbo-rails", to: "turbo.js"
 pin "@rails/actioncable", to: "actioncable.esm.js"
+pin "pusher-js" # 8.4.0, vendored ESM bundle
 pin "@rails/request.js", to: "@rails--request.js" # @0.0.8
 pin "lexxy", to: "lexxy.js"
 pin "highlight.js", to: "highlight.js/core.js"

@@ -97,6 +97,13 @@ Rails.application.routes.draw do
 
   resource :unfurl_link, only: :create
 
+  # Pusher/Reverb transport for realtime (see app/javascript/lib/reverb).
+  namespace :reverb do
+    post "subscription" => "channels#resolve"
+    post "auth"         => "channels#authenticate"
+    post "perform"      => "channels#perform"
+  end
+
   get "webmanifest"    => "pwa#manifest"
   get "service-worker" => "pwa#service_worker"
 
