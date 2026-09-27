@@ -17,8 +17,29 @@ const AUTH_URL = "/reverb/auth"
 const PERFORM_URL = "/reverb/perform"
 const EVENT_NAME = "action_cable"
 
+// Reverb caps a message at its application's max message size (10,000 bytes on
+// Cloud), which every Campfire message append is over, so the adapter deflates
+// anything near the limit and marks it with this key. See
+// lib/action_cable/subscription_adapter/reverb.rb.
+const COMPRESSED_KEY = "__deflated"
+
 async function postJSON(url, body) {
   return post(url, { body, responseKind: "json" })
+}
+
+async function decodePayload(data) {
+  if (data && typeof data === "object" && typeof data[COMPRESSED_KEY] === "string") {
+    return JSON.parse(await inflate(data[COMPRESSED_KEY]))
+  }
+
+  return data
+}
+
+async function inflate(base64) {
+  const bytes = Uint8Array.from(atob(base64), character => character.charCodeAt(0))
+  const stream = new Blob([ bytes ]).stream().pipeThrough(new DecompressionStream("deflate"))
+
+  return new Response(stream).text()
 }
 
 export default class ReverbConsumer {
@@ -101,6 +122,9 @@ class ReverbSubscription {
   #connected = false
   #pusherChannel = null
   #onUnsubscribe = null
+  // Inflating is asynchronous, and Turbo Streams have to be applied in the
+  // order they arrived, so deliveries queue behind one another.
+  #deliveries = Promise.resolve()
 
   constructor(consumer, params, mixin) {
     this.consumer = consumer
@@ -164,13 +188,19 @@ class ReverbSubscription {
         console.error(`[reverb] could not subscribe to ${channel}`, status)
         this.#markDisconnected()
       })
-      this.#pusherChannel.bind(EVENT_NAME, data => this.received?.(data))
+      this.#pusherChannel.bind(EVENT_NAME, data => this.#deliver(data))
     } else {
       this.consumer.pusher.connect()
       if (this.consumer.pusher.connection.state === "connected") this.#markConnected()
     }
 
     if (on_subscribe) this.perform(on_subscribe)
+  }
+
+  #deliver(data) {
+    this.#deliveries = this.#deliveries
+      .then(async () => this.received?.(await decodePayload(data)))
+      .catch(error => console.error("[reverb] could not deliver a message", error))
   }
 
   #markConnected() {

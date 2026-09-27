@@ -6,8 +6,10 @@ class ActionCable::SubscriptionAdapter::ReverbTest < ActiveSupport::TestCase
   class RecordingClient
     attr_reader :triggers
 
-    def initialize(error: nil)
-      @triggers, @error = [], error
+    attr_reader :max_message_size
+
+    def initialize(error: nil, max_message_size: ReverbClient::DEFAULT_MAX_MESSAGE_SIZE)
+      @triggers, @error, @max_message_size = [], error, max_message_size
     end
 
     def trigger(channel:, event:, data:)
@@ -58,6 +60,26 @@ class ActionCable::SubscriptionAdapter::ReverbTest < ActiveSupport::TestCase
     assert_nothing_raised do
       @adapter.broadcast "user_1_reads", "{}"
     end
+  end
+
+  test "a payload over Reverb's message limit is deflated, and inflates back to the original" do
+    payload = ActiveSupport::JSON.encode("<turbo-stream>#{"a message partial " * 800}</turbo-stream>")
+    assert_operator payload.bytesize, :>, ReverbClient::DEFAULT_MAX_MESSAGE_SIZE
+
+    @adapter.broadcast "Z2lk:messages", payload
+
+    sent = JSON.parse(@client.triggers.sole[:data])
+    assert_operator @client.triggers.sole[:data].bytesize, :<, ReverbClient::DEFAULT_MAX_MESSAGE_SIZE
+    assert_equal payload,
+      Zlib::Inflate.inflate(Base64.strict_decode64(sent[ActionCable::SubscriptionAdapter::Reverb::COMPRESSED_KEY]))
+  end
+
+  test "a payload inside the limit is sent as is, so the browser parses it like Action Cable's own" do
+    payload = ActiveSupport::JSON.encode("<turbo-stream>small</turbo-stream>")
+
+    @adapter.broadcast "Z2lk:messages", payload
+
+    assert_equal payload, @client.triggers.sole[:data]
   end
 
   test "a stream whose channel name would exceed Pusher's limit is not published" do

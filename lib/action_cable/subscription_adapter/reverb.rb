@@ -19,6 +19,20 @@ module ActionCable
     class Reverb < Base
       EVENT_NAME = "action_cable"
 
+      # Reverb refuses an HTTP API call whose whole body is over the
+      # application's max message size — 10,000 bytes on Cloud, with no CLI flag
+      # to raise it — and answers 413. Every Campfire message append is bigger
+      # than that, because the message partial carries the boost UI and the
+      # actions menu with it, so an uncompressed transport delivers typing and
+      # unread events and drops the messages themselves. Deflate buys an order
+      # of magnitude on Turbo Stream HTML, which puts a message well inside the
+      # budget; app/javascript/lib/reverb/consumer.js inflates it.
+      COMPRESSED_KEY = "__deflated"
+
+      # Room for {"name":…,"channel":…,"data":…} and the JSON escaping of the
+      # payload inside it.
+      ENVELOPE_HEADROOM = 512
+
       def broadcast(channel, payload)
         pusher_channel = ReverbStream.channel_for(channel)
 
@@ -27,7 +41,7 @@ module ActionCable
           return
         end
 
-        ::ReverbClient.instance.trigger channel: pusher_channel, event: EVENT_NAME, data: payload
+        ::ReverbClient.instance.trigger channel: pusher_channel, event: EVENT_NAME, data: encode(payload)
       rescue ::ReverbClient::Error => e
         # A Reverb outage costs realtime updates; it must not also cost the
         # request that triggered the broadcast (posting a message, for one).
@@ -43,6 +57,19 @@ module ActionCable
 
       def shutdown
       end
+
+      private
+        def encode(payload)
+          return payload if payload.bytesize <= budget
+
+          deflated = { COMPRESSED_KEY => Base64.strict_encode64(Zlib::Deflate.deflate(payload)) }.to_json
+          logger.info "[reverb] deflated a #{payload.bytesize}-byte payload to #{deflated.bytesize} bytes (budget #{budget})"
+          deflated
+        end
+
+        def budget
+          ::ReverbClient.instance.max_message_size - ENVELOPE_HEADROOM
+        end
     end
   end
 end

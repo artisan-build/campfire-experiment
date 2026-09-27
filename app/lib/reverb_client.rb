@@ -15,6 +15,10 @@ class ReverbClient
   AUTH_VERSION = "1.0"
   DEFAULT_TIMEOUT = 5
 
+  # Cloud creates WebSocket applications with a 10,000-byte max message size and
+  # exposes no flag to change it; Reverb answers 413 above it.
+  DEFAULT_MAX_MESSAGE_SIZE = 10_000
+
   # Cloud fronts the Reverb host with Cloudflare, whose browser integrity check
   # answers a default Net::HTTP user agent with a Cloudflare 403 (error 1010)
   # before Reverb ever sees the request. Verified live: the same signed POST
@@ -39,16 +43,18 @@ class ReverbClient
     end
   end
 
-  attr_reader :app_id, :key, :host, :port, :scheme
+  attr_reader :app_id, :key, :host, :port, :scheme, :max_message_size
 
   def initialize(app_id: ENV["REVERB_APP_ID"], key: ENV["REVERB_APP_KEY"], secret: ENV["REVERB_APP_SECRET"],
                  host: ENV["REVERB_HOST"], port: ENV["REVERB_PORT"], scheme: ENV["REVERB_SCHEME"],
-                 verify_ssl: ENV["REVERB_VERIFY_SSL"], timeout: DEFAULT_TIMEOUT)
+                 verify_ssl: ENV["REVERB_VERIFY_SSL"], timeout: DEFAULT_TIMEOUT,
+                 max_message_size: ENV["REVERB_MAX_MESSAGE_SIZE"])
     @app_id, @key, @secret, @host = app_id, key, secret, host
     @scheme = scheme.presence || "https"
     @port = (port.presence || (@scheme == "https" ? 443 : 80)).to_i
     @verify_ssl = verify_ssl.nil? || ActiveModel::Type::Boolean.new.cast(verify_ssl) != false
     @timeout = timeout
+    @max_message_size = (max_message_size.presence || DEFAULT_MAX_MESSAGE_SIZE).to_i
   end
 
   # What the browser needs to open its own socket. Never the secret.

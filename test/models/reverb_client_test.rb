@@ -82,6 +82,11 @@ class ReverbClientTest < ActiveSupport::TestCase
     end
   end
 
+  test "the max message size comes from the environment, with Cloud's default" do
+    assert_equal ReverbClient::DEFAULT_MAX_MESSAGE_SIZE, @client.max_message_size
+    assert_equal 4096, ReverbClient.new(max_message_size: "4096").max_message_size
+  end
+
   test "a subscription is signed the way Pusher specifies" do
     expected = OpenSSL::HMAC.hexdigest("sha256", SECRET, "123.456:private-ac-abc")
 
