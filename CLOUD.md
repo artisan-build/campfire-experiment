@@ -52,7 +52,49 @@ reading `cloud environment:logs` (and, for one, Ed reading the dashboard's deplo
    carry the upgrade. This is a **platform limitation**, not an app bug; Campfire's realtime (post
    appears for other users without reload) does not work on Cloud today. Cloud's managed WebSockets are
    a Laravel/Reverb (Pusher-protocol) product and are not compatible with Action Cable, so they are not
-   a drop-in. Not worked around, per brief.
+   a drop-in. Not worked around on `main`; branch `pusher-reverb` carries realtime over Reverb instead
+   (see below).
+
+## Realtime over Cloud's managed Reverb (branch `pusher-reverb` only)
+
+Branch `pusher-reverb` carries realtime over Reverb's Pusher protocol instead of Action Cable's
+WebSocket, which #5 above makes unusable on Cloud. Nothing in it activates without the `REVERB_*`
+variables, so `main`, development, test and CI are unaffected.
+
+- **Server:** `lib/action_cable/subscription_adapter/reverb.rb` is an Action Cable *subscription
+  adapter* that publishes over the Pusher HTTP API. Every broadcast — Turbo Streams' `broadcast_*_to`
+  and the two direct `ActionCable.server.broadcast` calls — funnels through it, so no call site
+  changes. `config/initializers/reverb_cable.rb` selects it when the variables are present, which
+  keeps `config/cable.yml` out of the diff.
+- **Client:** `app/javascript/lib/reverb/` registers `<turbo-cable-stream-source>` before turbo-rails
+  can (turbo-rails guards its own `define`) and hands turbo's `cable.setConsumer` a pusher-js-backed
+  consumer, so views and Stimulus controllers are untouched.
+- **Channel names:** `private-ac-<base64url(action cable stream name)>` — reversible, so the
+  broadcaster and the auth endpoint derive one from the other with no shared state.
+- **Authorization:** `POST /reverb/auth` decodes the channel back to its stream and checks it against
+  the session (`ReverbAuthorization`, default deny) before signing. `POST /reverb/subscription` names
+  the channel; `POST /reverb/perform` carries typing and presence messages client→server.
+
+### Reverb traps found live
+
+1. **Attaching is refused for Rails apps.** `environment:update --websocket-application-id=…` answers
+   `422 "Reverb is not available for Rails applications."`, so Cloud injects nothing. The `REVERB_*`
+   variables have to be set by hand from `websocket-application:get --show-sensitive`: `REVERB_APP_ID`,
+   `REVERB_APP_KEY`, `REVERB_APP_SECRET`, `REVERB_HOST`, `REVERB_PORT`, `REVERB_SCHEME`.
+2. **Cloudflare blocks a default Ruby user agent.** The Reverb host sits behind Cloudflare with the
+   browser integrity check on; a signed POST as `Ruby` gets Cloudflare 403 (error 1010) before Reverb
+   sees it. `ReverbClient::USER_AGENT` exists for that.
+3. **A new WebSocket application is created with `allowedOrigins: []`**, which Reverb reads as "deny",
+   so every browser gets `pusher:error 4009 Origin not allowed` — after a clean `101` handshake, so it
+   only shows up in the frames. `websocket-application:create --allowed-origins="*"`; `:update` has no
+   flag for it.
+4. **`maxMessageSize` is 10,000 bytes and no CLI flag raises it.** Reverb answers `413 Payload too
+   large` to a bigger HTTP API body. A Campfire message append is **11,436 bytes** (the partial carries
+   the boost UI and the actions menu), so messages were dropped while 12-byte typing and unread events
+   arrived. The adapter deflates anything near the budget (11,436 → 2,051 bytes) and the browser
+   inflates with `DecompressionStream`.
+5. **pusher-js needs a `cluster`** even when `wsHost` is set, or it throws
+   `Options object must provide a cluster`.
 
 ## Cloud Resources
 
