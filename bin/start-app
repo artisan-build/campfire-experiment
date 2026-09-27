@@ -4,4 +4,6 @@
 # (bin/rails db:prepare), so the web process boots straight into Puma to
 # keep the port-open gap after "Server started" as short as possible.
 rm -f tmp/pids/server.pid
-exec ./bin/rails server
+# `rails server` passes its own host/port to Puma, overriding the config file's
+# bind (needed for PUMA_BIND_HOST=[::] on Cloud), so start Puma directly.
+exec bundle exec puma -C config/puma.rb
