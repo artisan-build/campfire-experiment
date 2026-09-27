@@ -15,6 +15,12 @@ class ReverbClient
   AUTH_VERSION = "1.0"
   DEFAULT_TIMEOUT = 5
 
+  # Cloud fronts the Reverb host with Cloudflare, whose browser integrity check
+  # answers a default Net::HTTP user agent with a Cloudflare 403 (error 1010)
+  # before Reverb ever sees the request. Verified live: the same signed POST
+  # fails as "Ruby" and succeeds as a browser.
+  USER_AGENT = "Mozilla/5.0 (compatible; Campfire/1.0; +Reverb)"
+
   class << self
     # True when a WebSocket application is attached: Cloud injects all five
     # names below. Nothing in this file is reachable otherwise, which is what
@@ -73,7 +79,8 @@ class ReverbClient
     def post(path, body)
       uri = URI("#{scheme}://#{host}:#{port}#{path}?#{signed_query("POST", path, body)}")
 
-      response = http(uri).post("#{uri.path}?#{uri.query}", body, "Content-Type" => "application/json")
+      response = http(uri).post("#{uri.path}?#{uri.query}", body,
+        "Content-Type" => "application/json", "User-Agent" => USER_AGENT)
       raise Error, "#{response.code} #{response.body.to_s.truncate(200)}" unless response.is_a?(Net::HTTPSuccess)
 
       response
