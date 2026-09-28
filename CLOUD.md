@@ -132,6 +132,62 @@ Captured from a live instance (values never recorded):
   Resque cluster); `instance:update --scale-to-zero=false` 422s unless a `--scale-to-zero-timeout` is
   also passed, and the environment's `usesHibernation` read is unreliable.
 
+## Upstream PRs carried
+
+Patches taken from open `basecamp/once-campfire` pull requests, cherry-picked onto this branch with
+`git cherry-pick -x` so each commit records the upstream SHA it came from. When one of these is merged
+upstream, drop the local commit on the next `git merge upstream/main`.
+
+### PR #187 — "Serve avatar and logo variants through Active Storage"
+
+<https://github.com/basecamp/once-campfire/pull/187> (OPEN; head `0a1d24d3966cd24a34085c86ea8df9901c8487ba`).
+
+Fixes a 500 on avatar and logo thumbnails when Active Storage is backed by a pathless service. Both
+controllers called `ActiveStorage::Blob.service.path_for(variant.key)`, which only `DiskService`
+implements; on Cloud's S3-compatible bucket it raises `NoMethodError`. They now stream the processed
+representation with `send_blob_stream`. **This is the fix for the variant 500 this fork hit live.**
+
+Commits taken: `495051b8` (`Fix S3-backed avatar and logo rendering`), `388b3c7d`
+(`Add regression tests for pathless Active Storage services`). The PR's third commit,
+`0a1d24d3` (`Inline avatar variant streaming`), was **skipped as already carried** — it only inlines a
+`send_webp_blob` helper that never existed here, because the conflict resolution below wrote the
+inlined form directly.
+
+Conflicts resolved, minimally: PR #187 branched from `3fada3d9`, before upstream moved the variant
+definitions into the models (`Account#logo_variant`, `User#avatar_variant`). The PR's own
+`SQUARE_WEBP_VARIANT` / `logo_variant` controller constants were therefore **not** taken; the current
+upstream model helpers are kept and only the send call changed. `test/test_helper.rb` and
+`test/controllers/users/avatars_controller_test.rb` were additive conflicts — both sides kept.
+
+Upstream files edited by this PR:
+
+- `app/controllers/accounts/logos_controller.rb`: `send_blob_stream logo_variant` instead of
+  `send_png_file ActiveStorage::Blob.service.path_for(...)`.
+- `app/controllers/users/avatars_controller.rb`: same, and the `send_webp_blob_file` helper is gone.
+- `test/controllers/accounts/logos_controller_test.rb`, `test/controllers/users/avatars_controller_test.rb`:
+  one regression test each, driven through a pathless service.
+- `test/test_helper.rb`: include `ActiveStorageServiceTestHelper`.
+
+New file (no upstream counterpart): `test/test_helpers/active_storage_service_test_helper.rb` —
+`PathlessActiveStorageTestService`, a delegating service with no `path_for`, plus
+`with_pathless_active_storage_service`.
+
+### PR #212 — "Require authentication for ActiveStorage direct-upload write endpoints" — NOT carried
+
+<https://github.com/basecamp/once-campfire/pull/212> (OPEN; head `0141eae0`). **Deliberately not taken.**
+
+Upstream already merged an equivalent fix, **#267** (`79eb9a5516a8e0b68ea49961ff3e9d38cd48b59d`,
+2026-08-30), which this fork inherits through `upstream/main`:
+`app/controllers/concerns/active_storage_authentication.rb` +
+`config/initializers/active_storage_authentication.rb` gate `DirectUploadsController#create` and
+`DiskController#update` behind a Campfire session cookie (401 for anonymous callers) while leaving
+`DiskController#show` public. `test/controllers/active_storage_authentication_test.rb` covers all four
+cases.
+
+#212 was cherry-picked, measured and reverted: stacked on top of #267 its `before_action` never fires
+first, so it adds no coverage, and it edits `config/initializers/active_storage.rb` — a new upstream-file
+conflict surface for nothing. Ed's call, 2026-09-28.
+
 ## Upstream Files Edited
 
 - `Gemfile`, `Gemfile.lock`: replace SQLite with PostgreSQL and add the S3 SDK.
@@ -146,8 +202,12 @@ Captured from a live instance (values never recorded):
 - `app/models/user.rb`: case-insensitive autocomplete on PostgreSQL.
 - `bin/start-app`: start Puma directly (so config bind applies), migrations run in the deploy command.
 - `Procfile`: `web:` runs `bin/start-app` without wrapping Puma in Thruster.
+- `app/controllers/accounts/logos_controller.rb`, `app/controllers/users/avatars_controller.rb`,
+  `test/controllers/accounts/logos_controller_test.rb`, `test/controllers/users/avatars_controller_test.rb`,
+  `test/test_helper.rb`: upstream PR #187, above.
 
 ### New files (no upstream counterpart, no merge risk)
 
 - `config/initializers/action_cable_redis.rb`: drop `:id` from the Action Cable Redis connector (#3).
 - `.cloud/config.json`: experiment-specific Cloud binding.
+- `test/test_helpers/active_storage_service_test_helper.rb`: pathless Active Storage service for PR #187's tests.
